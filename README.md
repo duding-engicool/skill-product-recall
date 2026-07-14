@@ -1,10 +1,6 @@
 # 产品召回助手（product-recall）
 
-面向 **质量总监 / 合规** 的混合式双版技能：规范产品召回的触发判定、分级、通知矩阵与演练推演，自动生成召回预案与模拟推演表，输出 **MD + HTML 双版报告**。
-
-## 主色
-
-`#C8102E`（一级召回与关键里程碑高亮统一使用）
+面向 **质量总监 / 合规** 的技能：规范产品召回的触发判定、分级、通知矩阵与演练推演，自动生成召回预案与模拟推演表，输出 **纯文字版(.txt) + Markdown(.md)**。
 
 ## 适用角色
 
@@ -15,10 +11,10 @@
 
 ```bash
 # 使用内置小样本（首次跑通验证）
-python scripts/build_report.py -o output/recall_sample
+python scripts/build_report.py --out-dir ./out
 
 # 使用自有数据
-python scripts/build_report.py -i recall.json -o output/my_recall
+python scripts/build_report.py --input recall.json --out-dir ./out
 ```
 
 ## 输入字段（摘要）

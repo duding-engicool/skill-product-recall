@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-产品召回报告生成器（混合式双版：MD + HTML）
-读取召回信息 JSON（或内置小样本）→ 按一/二/三级矩阵分级 → 装配通知矩阵 + 时间线 + 演练推演 → 输出 MD + HTML。
+产品召回报告生成器（纯文字版 .txt + Markdown .md）
+读取召回信息 JSON（或内置小样本）→ 按一/二/三级矩阵分级 → 装配通知矩阵 + 时间线 + 演练推演 → 输出 .txt + .md。
 
 JSON 字段：
 {
@@ -14,25 +14,21 @@ JSON 字段：
 }
 
 用法：
-  python build_report.py -i recall.json -o recall_report
-  python build_report.py -o recall_report          # 使用内置小样本
+  python build_report.py --input recall.json --out-dir ./out
+  python build_report.py --out-dir ./out          # 使用内置小样本
 """
 
 import argparse
 import json
 import os
-import html
-
-# 主色
-MAIN = "#C8102E"
+from datetime import date
 
 # 召回分级（通用参考，企业可覆盖）
 GRADE = {
-    "一级": {"scope": "全国范围", "launch": "立即启动", "notice": "媒体公告", "color": MAIN},
-    "二级": {"scope": "限定区域", "launch": "限期启动", "notice": "定向通知", "color": "#E8A33D"},
-    "三级": {"scope": "特定批次/渠道", "launch": "渠道内启动", "notice": "渠道回收", "color": "#2E9E5B"},
+    "一级": {"scope": "全国范围", "launch": "立即启动", "notice": "媒体公告"},
+    "二级": {"scope": "限定区域", "launch": "限期启动", "notice": "定向通知"},
+    "三级": {"scope": "特定批次/渠道", "launch": "渠道内启动", "notice": "渠道回收"},
 }
-
 
 # 内置小样本（一级召回）
 SAMPLE_DATA = {
@@ -127,92 +123,66 @@ def generate_md(meta, recall, notifications, timeline, drill):
     return "\n".join(lines)
 
 
-def generate_html(meta, recall, notifications, timeline, drill):
-    product = html.escape(str(meta.get("product", "未命名产品")))
-    batch = html.escape(str(meta.get("batch", "待企业补充")))
-    company = html.escape(str(meta.get("company", "待企业补充")))
-    date = html.escape(str(meta.get("date", "—")))
-    owner = html.escape(str(meta.get("owner", "待企业补充")))
-    trigger = html.escape(str(recall.get("trigger", "待企业补充")))
-    root = html.escape(str(recall.get("root_cause", "待企业补充")))
-
+def generate_txt(meta, recall, notifications, timeline, drill):
     level = recall.get("risk_level", "三级")
     gi = grade_info(level)
-    gcolor = gi["color"]
+    lines = []
+    lines.append("=" * 72)
+    lines.append(f"产品召回预案 · {meta.get('product','未命名产品')}")
+    lines.append("=" * 72)
+    lines.append("")
+    lines.append(f"产品：{meta.get('product','待企业补充')} ｜ 批次：{meta.get('batch','待企业补充')}")
+    lines.append(f"企业：{meta.get('company','待企业补充')} ｜ 日期：{meta.get('date','—')} ｜ 负责人：{meta.get('owner','待企业补充')}")
+    lines.append(f"触发：{recall.get('trigger','待企业补充')}")
+    lines.append(f"召回分级：{level}（范围：{gi['scope']}；启动：{gi['launch']}；公告：{gi['notice']}）")
+    lines.append(f"预估数量：{fmt_num(recall.get('estimated_units'))} 件 ｜ 影响区域：{recall.get('affected_regions','待企业补充')}")
+    lines.append(f"根因：{recall.get('root_cause','待企业补充')}")
+    lines.append("")
 
-    # 通知矩阵
-    nrows = ""
+    # 一、通知矩阵
+    lines.append("-" * 72)
+    lines.append("一、通知矩阵")
+    lines.append("-" * 72)
+    lines.append("  渠道 | 告知方式 | 时限 | 责任方")
+    lines.append("  " + "-" * 68)
     for n in notifications:
-        nrows += f"<tr><td>{html.escape(str(n.get('channel','—')))}</td><td>{html.escape(str(n.get('method','—')))}</td><td>{html.escape(str(n.get('timing','—')))}</td><td>{html.escape(str(n.get('owner','待企业补充')))}</td></tr>"
+        lines.append(f"  {n.get('channel','—')} | {n.get('method','—')} | {n.get('timing','—')} | {n.get('owner','待企业补充')}")
+    lines.append("")
 
-    # 时间线
-    trows = ""
-    for i, t in enumerate(timeline):
-        dot = MAIN if i in (0, len(timeline) - 1) else gcolor
-        trows += f"""<div class="tl-item">
-  <div class="tl-dot" style="background:{dot}"></div>
-  <div class="tl-body"><b>{html.escape(str(t.get('step','—')))}</b> <span class="tl-dl">{html.escape(str(t.get('deadline','—')))}</span><div class="tl-act">{html.escape(str(t.get('action','—')))}</div></div>
-</div>"""
+    # 二、时间线
+    lines.append("-" * 72)
+    lines.append("二、召回时间线")
+    lines.append("-" * 72)
+    lines.append("  里程碑 | 时限 | 动作")
+    lines.append("  " + "-" * 68)
+    for t in timeline:
+        lines.append(f"  {t.get('step','—')} | {t.get('deadline','—')} | {t.get('action','—')}")
+    lines.append("")
+    lines.append("  时限为通用参考，具体以企业制度与所在地法规为准；缺失项标「待企业补充」。")
+    lines.append("")
 
-    # 演练
-    drows = ""
+    # 三、演练推演
+    lines.append("-" * 72)
+    lines.append("三、模拟推演表")
+    lines.append("-" * 72)
+    lines.append("  场景 | 参与角色 | 时长 | 关键检查点")
+    lines.append("  " + "-" * 68)
     for d in drill:
-        drows += f"<tr><td>{html.escape(str(d.get('scenario','—')))}</td><td>{html.escape(str(d.get('participants','待企业补充')))}</td><td>{html.escape(str(d.get('duration','—')))}</td><td>{html.escape(str(d.get('checkpoint','—')))}</td></tr>"
+        lines.append(f"  {d.get('scenario','—')} | {d.get('participants','待企业补充')} | {d.get('duration','—')} | {d.get('checkpoint','—')}")
+    lines.append("")
 
-    doc = f"""<!DOCTYPE html>
-<html lang="zh-CN"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>产品召回预案 · {product}</title>
-<style>
-*{{box-sizing:border-box;font-family:-apple-system,'Segoe UI','Microsoft YaHei',sans-serif;margin:0;padding:0;color:#1f2329}}
-body{{background:#f5f6f8;padding:24px}}
-.wrap{{max-width:960px;margin:0 auto;background:#fff;border-radius:12px;padding:28px 32px;box-shadow:0 2px 12px rgba(0,0,0,.06)}}
-h1{{font-size:22px;color:{MAIN};border-bottom:3px solid {MAIN};padding-bottom:10px}}
-.meta{{color:#666;font-size:13px;margin:12px 0 18px;line-height:1.9}}
-.grade{{display:inline-block;background:{gcolor};color:#fff;padding:4px 14px;border-radius:14px;font-weight:bold;font-size:14px}}
-.section{{margin:22px 0}}
-.section h2{{font-size:16px;color:{MAIN};border-left:4px solid {MAIN};padding-left:8px;margin-bottom:10px}}
-table{{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0}}
-th,td{{border:1px solid #e8eaed;padding:8px 10px;text-align:left}}
-th{{background:#fafbfc;color:#444}}
-.tl{{position:relative;margin-left:8px;padding-left:20px;border-left:2px solid #e8eaed}}
-.tl-item{{position:relative;margin:12px 0}}
-.tl-dot{{position:absolute;left:-27px;top:4px;width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 2px #e8eaed}}
-.tl-body{{background:#fafbfc;border:1px solid #e8eaed;border-radius:8px;padding:10px 14px}}
-.tl-dl{{color:#888;font-size:12px;margin-left:6px}}
-.tl-act{{color:#555;font-size:13px;margin-top:4px}}
-.foot{{color:#999;font-size:12px;margin-top:22px;border-top:1px dashed #ddd;padding-top:10px}}
-</style></head>
-<body><div class="wrap">
-<h1>产品召回预案 · {product}</h1>
-<div class="meta">
-  产品：{product} ｜ 批次：{batch}<br>
-  企业：{company} ｜ 日期：{date} ｜ 负责人：{owner}<br>
-  触发：{trigger}<br>
-  召回分级：<span class="grade">{html.escape(level)}</span> ｜ 范围：{html.escape(gi['scope'])} ｜ 启动：{html.escape(gi['launch'])} ｜ 公告：{html.escape(gi['notice'])}<br>
-  预估数量：{fmt_num(recall.get('estimated_units'))} 件 ｜ 影响区域：{html.escape(str(recall.get('affected_regions','待企业补充')))}<br>
-  根因：{root}
-</div>
-
-<div class="section"><h2>通知矩阵</h2>
-<table><tr><th>渠道</th><th>告知方式</th><th>时限</th><th>责任方</th></tr>{nrows}</table></div>
-
-<div class="section"><h2>召回时间线</h2>
-<div class="tl">{trows}</div>
-<p style="font-size:12px;color:#999">时限为通用参考，具体以企业制度与所在地法规为准。</p></div>
-
-<div class="section"><h2>模拟推演表</h2>
-<table><tr><th>场景</th><th>参与角色</th><th>时长</th><th>关键检查点</th></tr>{drows}</table></div>
-
-<div class="foot">本预案由产品召回助手生成。法规条款号、监管时限、根因结论缺失处已标注「待企业补充」，分级默认参考通用矩阵，最终召回决策与报送以企业制度与所在地法规为准。</div>
-</div></body></html>"""
-    return doc
+    lines.append("-" * 72)
+    lines.append("本预案由产品召回助手生成。法规条款号、监管时限、根因结论缺失处已标注「待企业补充」，分级默认参考通用矩阵，最终召回决策与报送以企业制度与所在地法规为准。")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def main():
-    ap = argparse.ArgumentParser(description="产品召回报告生成器（MD + HTML 双版）")
-    ap.add_argument("-i", "--input", help="召回信息 JSON 路径（缺省使用内置小样本）")
-    ap.add_argument("-o", "--output", default="recall_report", help="输出前缀（生成 .md 与 .html）")
+    ap = argparse.ArgumentParser(description="产品召回报告生成器（txt + md）")
+    ap.add_argument("--input", help="召回信息 JSON 路径（缺省使用内置小样本）")
+    ap.add_argument("--out-dir", default=os.getcwd(), help="输出目录（默认当前工作目录）")
+    ap.add_argument("--format", choices=["txt", "md", "all"], default="all",
+                    help="输出格式：txt / md / all（默认 all = txt + md）")
     args = ap.parse_args()
 
     if args.input:
@@ -220,7 +190,7 @@ def main():
             payload = json.load(f)
     else:
         payload = SAMPLE_DATA
-        print("ℹ️ 未提供 -i，使用内置小样本数据。")
+        print("ℹ️ 未提供 --input，使用内置小样本数据。")
 
     meta = payload.get("meta", {}) or {}
     recall = payload.get("recall", {}) or {}
@@ -228,21 +198,24 @@ def main():
     timeline = payload.get("timeline", []) or []
     drill = payload.get("drill", []) or []
 
-    md = generate_md(meta, recall, notifications, timeline, drill)
-    htm = generate_html(meta, recall, notifications, timeline, drill)
+    date_str = date.today().strftime("%Y%m%d")
+    base = f"产品召回预案_{meta.get('product','未命名产品')}_{date_str}".replace("/", "-")
+    os.makedirs(args.out_dir, exist_ok=True)
 
-    out_dir = os.path.dirname(args.output)
-    if out_dir and not os.path.isdir(out_dir):
-        os.makedirs(out_dir, exist_ok=True)
+    if args.format in ("md", "all"):
+        md = generate_md(meta, recall, notifications, timeline, drill)
+        md_path = os.path.join(args.out_dir, base + ".md")
+        with open(md_path, "w", encoding="utf-8") as f:
+            f.write(md)
+        print(f"✅ MD : {md_path}")
 
-    md_path = args.output + ".md"
-    html_path = args.output + ".html"
-    with open(md_path, "w", encoding="utf-8") as f:
-        f.write(md)
-    with open(html_path, "w", encoding="utf-8") as f:
-        f.write(htm)
+    if args.format in ("txt", "all"):
+        txt = generate_txt(meta, recall, notifications, timeline, drill)
+        txt_path = os.path.join(args.out_dir, base + ".txt")
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write(txt)
+        print(f"✅ TXT: {txt_path}")
 
-    print(f"✅ 报告已生成：\n  MD : {md_path}\n  HTML: {html_path}")
     print(f"   召回分级={recall.get('risk_level','三级')}  预估数量={fmt_num(recall.get('estimated_units'))} 件")
 
 
